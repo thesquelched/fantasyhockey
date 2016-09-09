@@ -111,5 +111,5 @@ def load_data():
 
 if __name__ == '__main__':
     corsica, projection = load_data()
-    corsica.to_csv('data/corsica/skater.csv')
-    projection.to_csv('data/projection.csv')
+    corsica.to_csv('data/skater.csv')
+    projection.to_csv('data/skater_projection.csv')
