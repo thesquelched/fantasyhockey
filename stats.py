@@ -38,6 +38,7 @@ def parse_corsica(path):
         ('A', 'A'),
         ('P', 'P'),
         ('iSF', 'SH'),
+        ('iSh%', 'SH%'),
         ('iFOW', 'FOW'),
         ('iFOL', 'FOL'),
     ]
@@ -57,7 +58,7 @@ def corsica_projection(data):
     def projection(df):
         return df.mul(df.weight, axis=0).sum() / df.weight.sum()
 
-    return data.groupby(level=(0, 1)).apply(projection).drop(['weight', 'season'], axis=1)
+    return data.groupby(level=(0, 1)).apply(projection).drop(['weight', 'season', 'SH%'], axis=1)
 
 
 def corsica_add(*dataframes):
@@ -66,8 +67,11 @@ def corsica_add(*dataframes):
     if len(dataframes) == 1:
         return dataframes[0]
 
-    result = dataframes[0]
-    for df in dataframes[1:]:
+    # Drop shooting percentage
+    dropped = [df.drop(['SH%'], axis=1) for df in dataframes]
+
+    result = dropped[0]
+    for df in dropped[1:]:
         result = result.add(df, fill_value=0)
 
     return result
