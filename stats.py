@@ -3,6 +3,7 @@ import pandas as pd
 
 
 PP_STATS = ('PPG', 'PPA', 'PPP')
+SH_STATS = ('SHG', 'SHA', 'SHP')
 
 
 def canonical_position(raw):
@@ -90,8 +91,14 @@ def load_corsica(datadir):
     corsica_pp = corsica_add(corsica_5v4, corsica_5v3)
     corsica_pp.rename(columns={col: 'PP' + col for col in corsica_pp.columns}, inplace=True)
 
+    corsica_4v5 = parse_corsica(os.path.join(datadir, 'corsica', 'skater_3yr_4v5.csv'))
+    corsica_3v5 = parse_corsica(os.path.join(datadir, 'corsica', 'skater_3yr_3v5.csv'))
+    corsica_sh = corsica_add(corsica_4v5, corsica_3v5)
+    corsica_sh.rename(columns={col: 'SH' + col for col in corsica_sh.columns}, inplace=True)
+
     pp_reduced = corsica_pp.filter(PP_STATS)
-    return corsica_all.join(pp_reduced)
+    sh_reduced = corsica_sh.filter(SH_STATS)
+    return corsica_all.join(pp_reduced).join(sh_reduced)
 
 
 def join_yahoo_corsica(yahoo, corsica):
