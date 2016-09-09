@@ -2,6 +2,9 @@ import os.path
 import pandas as pd
 
 
+PP_STATS = ('PPG', 'PPA', 'PPP')
+
+
 def canonical_position(raw):
     return ','.join(sorted(raw.translate(raw.maketrans('', '', ' W')).split(',')))
 
@@ -41,6 +44,8 @@ def parse_corsica(path):
         ('iSh%', 'SH%'),
         ('iFOW', 'FOW'),
         ('iFOL', 'FOL'),
+        ('iHF', 'H'),
+        ('iBLK', 'BLK'),
     ]
     return (data
             .rename(columns=dict(translation))
@@ -85,7 +90,8 @@ def load_corsica(datadir):
     corsica_pp = corsica_add(corsica_5v4, corsica_5v3)
     corsica_pp.rename(columns={col: 'PP' + col for col in corsica_pp.columns}, inplace=True)
 
-    return corsica_all.join(corsica_pp.drop(['PPGP', 'PPFOW', 'PPFOL'], axis=1))
+    pp_reduced = corsica_pp.filter(PP_STATS)
+    return corsica_all.join(pp_reduced)
 
 
 def join_yahoo_corsica(yahoo, corsica):
