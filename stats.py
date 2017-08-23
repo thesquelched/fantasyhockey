@@ -1,13 +1,21 @@
 import os.path
 import pandas as pd
+import string
 
 
 PP_STATS = ('PPG', 'PPA', 'PPP')
 SH_STATS = ('SHG', 'SHA', 'SHP')
+STATS = ('G', 'A', 'P', 'SH', 'FOW', 'H', 'BLK') + PP_STATS
+D_STATS = [stat for stat in STATS if stat != 'FOW']
+VALID_CHARS = frozenset(string.ascii_letters + " -'")
 
 
 def canonical_position(raw):
     return ','.join(sorted(raw.translate(raw.maketrans('', '', ' W')).split(',')))
+
+
+def convert_percentage(value):
+    return float(value.strip('%'))
 
 
 def parse_yahoo(path):
@@ -21,15 +29,41 @@ Sidney Crosby        1.2        100%         C      3.3
 Jamie Benn           1.2        100%         L      4.6
 Connor McDavid       1.2        100%         C      5.0
 """
-    data = pd.DataFrame.from_csv(path, index_col='name')
-    data['positions'] = data['positions'].map(canonical_position)
+    data = pd.DataFrame.from_csv(path, index_col=None)
 
-    return data
+    def correct_name(name):
+        return ''.join(char for char in name if char in VALID_CHARS).title()
+
+    data['name'] = data['name'].map(correct_name)
+    data['positions'] = data['positions'].map(canonical_position)
+    data['pct_drafted'] = data['pct_drafted'].map(convert_percentage)
+
+    return data.set_index('name')
 
 
 def parse_corsica(path):
+    corrections = {
+        'Parenteau': 'Pierre-Alexandr Parenteau',
+        'Steen': 'Alexander Steen',
+        'Cammalleri': 'Michael Cammalleri',
+        'Edler': 'Alexander Edler',
+    }
+
+    def correct_name(name):
+        # Remove period joining first/last names
+        first, last = name.rsplit('.', 1)
+        name = first.replace('.', '').title() + ' ' + last.title()
+        name = ''.join(char for char in name if char in VALID_CHARS)
+
+        for key, correction in corrections.items():
+            if key in name:
+                name = correction
+                break
+
+        return name
+
     data = pd.DataFrame.from_csv(path)
-    data['Player'] = data['Player'].map(lambda name: name.replace('.', ' ').title())
+    data['Player'] = data['Player'].map(correct_name)
     data['Season'] = data['Season'].astype(str)
 
     translation = [
@@ -98,11 +132,14 @@ def load_corsica(datadir):
 
     pp_reduced = corsica_pp.filter(PP_STATS)
     sh_reduced = corsica_sh.filter(SH_STATS)
-    return corsica_all.join(pp_reduced).join(sh_reduced)
+    return corsica_all.join(pp_reduced)
+    # return corsica_all.join(pp_reduced).join(sh_reduced)
 
 
-def join_yahoo_corsica(yahoo, corsica):
-    data = corsica.reset_index().set_index('name').join(yahoo)
+def join_yahoo_corsica(yahoo, corsica, indicator=False):
+    data = (corsica.reset_index().set_index('name')
+            .merge(yahoo, how='left', left_index=True, right_index=True,
+                   indicator=indicator))
     data.positions.fillna(data.position, inplace=True)
     data.avg_round.fillna(data.avg_round.max() + 1, inplace=True)
     data.avg_pick.fillna(data.avg_pick.max() + 1, inplace=True)
@@ -120,6 +157,48 @@ def load_data():
     projection = corsica_projection(corsica)
 
     return join_yahoo_corsica(yahoo, corsica), join_yahoo_corsica(yahoo, projection)
+
+
+def nth_best(data, stat, n):
+    return data.sort_values(stat, ascending=False).iloc[n].loc[stat]
+
+
+def stats_above_replacement(data, n_players, stats=None):
+    if stats is None:
+        stats = STATS
+
+    stats = list(stats)
+    others = [col for col in data.columns if col not in stats]
+    rl_stats = pd.Series({stat: nth_best(data, stat, n_players) for stat in stats})
+
+    def subtract_replacement(row):
+        subtracted = row.loc[stats] - rl_stats
+        return pd.concat([subtracted, row.loc[others]])
+
+    return data.apply(subtract_replacement, axis=1)
+
+
+def stddev_stats(data, n_players, stats=None):
+    if stats is None:
+        stats = STATS
+
+    sar = stats_above_replacement(data, n_players, stats=stats).filter(stats)
+    stats_std = (sar - sar.mean()) / sar.std()
+
+    return pd.concat([stats_std, data.filter([col for col in data.columns if col not in stats])],
+                     axis=1)
+
+
+def rank_by_std(data, n_players, stats=None):
+    if stats is None:
+        stats = STATS
+
+    std = stddev_stats(data, n_players, stats=stats)
+    std['value'] = std.filter(stats).sum(axis=1)
+
+    std = std[['value'] + std.columns.tolist()[:-1]]
+
+    return std.sort_values('value', ascending=False)
 
 
 if __name__ == '__main__':
