@@ -30,4 +30,10 @@ class YahooFantasyHockeySpider(scrapy.Spider):
 
         dpick, dround, dpct = [td.css('::text').extract_first() for td in rest]
 
-        return name, positions, dpick, dround, dpct
+        return (
+            name,
+            positions.replace('W', '').replace(',', ''),
+            dpick,
+            dround,
+            dpct.rstrip('%')
+        )
